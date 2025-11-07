@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# Docker
+*.log
+
+# Environnement / IDE
+.vscode/
+.idea/
+
+# Données locales
+data/*.csv
+*.env
