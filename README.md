@@ -5,81 +5,115 @@ Ce projet vise à automatiser la migration d’un dataset CSV vers MongoDB, en u
 
 Il démontre :
 
-- une migration fonctionnelle entre conteneurs,
+✅ une migration entre conteneurs fonctionnelle,
 
-- une refactorisation claire du code Python,
+✅ une validation stricte des données avant insertion,
 
-- une validation stricte de la donnée avant insertion,
+✅ des tests unitaires prouvant la fiabilité,
 
-- des tests unitaires pour prouver la fiabilité du code,
+✅ une authentification MongoDB avec gestion des rôles,
 
-- et une documentation complète pour rejouer l’expérience.
+✅ et une documentation complète pour rejouer l’expérience.
 
 🏗️ Architecture du projet
 Systemes_de_stockage_des_donnees_securise_et_performant/
 │
 ├── data/
-│   └── healthcare_dataset.csv
+│   └── healthcare_dataset.csv             # Dataset source
 │
-├── src/                          
-│   ├── app.py
-│   ├── script_python_mongo.py
-│   ├── test_app.py
+├── mongo-init/
+│   └── users_and_roles.js                # Script d'initialisation MongoDB (création des utilisateurs)
 │
-├── Dockerfile                    
-├── requirements.txt              
-├── docker-compose.yml
-└── README.md
+├── src/                                   # Code source principal
+│   ├── app.py                             # Fonctions utilitaires : validation, formatage, batching
+│   ├── script_python_mongo.py             # Script principal de migration CSV → MongoDB
+│   ├── test_app.py                        # Tests unitaires (pytest)
+│   ├── .gitignore                         # Fichiers et dossiers à exclure du dépôt Git
+│   └── .env.example                       # Exemple de configuration d'environnement (.env modèle)
+│
+├── Dockerfile                             # Image du conteneur migrator
+├── docker-compose.yml                     # Orchestration des services (Mongo + migrator)
+├── requirements.txt                       # Dépendances Python
+├── .env                                   # Variables d'environnement réelles (non versionné)
+└── README.md                              # Documentation complète du projet
+
 
 ⚙️ 1. Installation et lancement des conteneurs
 
-Avant de commencer, assure-toi que Docker Desktop est bien lancé sur Windows.
-Place-toi dans le dossier du projet :
-cd "C:\Users\adjab\Desktop\Formation\Systemes_de_stockage_des_donnees_securise_et_performant"
+1️⃣ Pré-requis
 
-🧱 Lancer l’environnement complet
+Docker Desktop installé et lancé
+
+Fichier .env contenant :
+MONGO_INITDB_ROOT_USERNAME=root
+MONGO_INITDB_ROOT_PASSWORD=change-me-root!
+MONGO_APP_DB=donnees_medicales
+MONGO_APPUSER=appuser
+MONGO_APPUSER_PWD=change-me-app!
+
+
+2️⃣ Lancer l’environnement complet
+
 docker compose up --build
-Cela construit et lance les conteneurs mongo et migrator.
+👉 Cela :
+crée MongoDB avec authentification,
 
-Le script lit ton CSV, valide les données et insère tout dans MongoDB.
+exécute le script d’initialisation des utilisateurs, et prépare le conteneur migrator.
 
-🔍 Vérifier les conteneurs actifs
-docker compose ps
+3️⃣ Vérifier l’état des conteneurs docker compose ps
 
 Tu devrais voir :
-NAME        STATUS          PORTS
-mongo       Up              0.0.0.0:27017->27017/tcp
-migrator    Exit 0
+NAME      STATUS             PORTS
+mongo     Up (healthy)       0.0.0.0:27017->27017/tcp
+migrator  Exit 0
 
-📦 2. Vérifier que la migration fonctionne
-📊 Compter les documents importés dans MongoDB
-docker compose exec mongo mongosh --eval "db.getSiblingDB('donnees_medicales').patients.countDocuments()"
+📦 2. Lancer et vérifier la migration
+Exécuter la migration :
+docker compose run --rm migrator
 
-👉 Si c’est le cas, ta migration fonctionne parfaitement.
-🧩 3. Structure du code et refactorisation
+Compter les documents insérés :
+docker compose exec mongo mongosh \ -u appuser -p "change-me-app!" \
+  --authenticationDatabase donnees_medicales \
+  --eval "db.getSiblingDB('donnees_medicales').patients.countDocuments()"
+👉 Si le nombre correspond à ton CSV (ex. 55500), la migration est réussie ✅
 
+🔐 3. Authentification et rôles d’accès
+
+Les utilisateurs sont créés automatiquement via le fichier mongo-init/users_and_roles.js.
+| Utilisateur                | Base d’auth         | Rôle attribué | Droits                       |
+| -------------------------- | ------------------- | ------------- | ---------------------------- |
+| **root**                   | `admin`             | `root`        | accès total                  |
+| **appuser**                | `donnees_medicales` | `readWrite`   | migration, lecture, écriture |
+| *(optionnel)* **readonly** | `donnees_medicales` | `read`        | lecture seule                |
+
+Test des accès :
+# Lecture OK
+docker compose exec mongo mongosh -u appuser -p "change-me-app!" --authenticationDatabase donnees_medicales --eval "db.getSiblingDB('donnees_medicales').patients.findOne()"
+
+# Tentative d'insertion (OK seulement pour appuser)
+docker compose exec mongo mongosh -u appuser -p "change-me-app!" --authenticationDatabase donnees_medicales --eval "db.getSiblingDB('donnees_medicales').patients.insertOne({test:1})"
+
+
+🧩 4. Structure du code et refactorisation
 Le code a été refactoré pour être modulaire et testable :
-| Fichier / Fonction         | Rôle                                                                 |
-| -------------------------- | -------------------------------------------------------------------- |
-| **app.py**                 | Contient les fonctions pures : lecture, validation, formatage, batch |
-| **script_python_mongo.py** | Conteneur principal orchestrant la migration                         |
-| **validate_headers()**     | Vérifie les colonnes obligatoires                                    |
-| **validate_content()**     | Vérifie la qualité des données (id, âge, etc.)                       |
-| **format_row()**           | Nettoie les valeurs (espaces, formats)                               |
-| **make_batches()**         | Crée des lots d’insertion                                            |
-| **format_batch()**         | Applique `format_row()` à tous les enregistrements                   |
+| Fichier / Fonction                 | Description                                                        |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| **app.py**                         | Fonctions pures (lecture, validation, formatage, batch)            |
+| **script_python_mongo.py**         | Migration complète CSV → MongoDB (connexion, nettoyage, insertion) |
+| **test_app.py**                    | Tests unitaires (pytest)                                           |
+| **mongo-init/001-create-users.js** | Création automatique des utilisateurs MongoDB                      |
 
 Le script principal appelle ces fonctions dans cet ordre :
 
-Chargement du CSV
+✅ Chargement du CSV
 
-Validation des colonnes et du contenu
+✅ Validation des colonnes et du contenu
 
-Nettoyage et batch
+✅ Nettoyage et batch
 
-Insertion dans MongoDB
+✅ Insertion dans MongoDB
 
-🧪 4. Tests unitaires et de validation
+🧪 5. Tests unitaires et de validation
 
 Les tests sont écrits avec pytest et exécutés dans le conteneur migrator.
 
@@ -90,11 +124,16 @@ docker compose run --rm migrator python -m pip install pytest
 docker compose run --rm migrator pytest -v
 
 💡 Résultat attendu :
-test_app.py::test_format_row_trim PASSED
-test_app.py::test_make_batches_size PASSED
-test_app.py::test_validate_headers_ok PASSED
-test_app.py::test_validate_content_ok PASSED
-============================= 5 passed in 0.04s =============================
+collected 6 items                                                                      
+test_app.py::test_format_row_trim PASSED                                        
+test_app.py::test_make_batches_size PASSED                                       [ 33%] 
+test_app.py::test_validate_headers_ok PASSED                                     [ 50%] 
+test_app.py::test_validate_headers_missing PASSED                                [ 66%] 
+test_app.py::test_validate_content_ok PASSED                                     [ 83%] 
+test_app.py::test_validate_content_id_manquant PASSED                            [100%] 
+
+================================== 6 passed in 0.04s ===================================
+
 
 Chaque test correspond à une fonctionnalité précise :
 
@@ -106,49 +145,38 @@ validate_headers → vérifie la présence des colonnes attendues.
 
 validate_content → vérifie qu’un identifiant et des valeurs valides sont présents.
 
-🚨 5. Validation stricte des données
+🚨 6. Validation stricte des données
 
-Avant toute insertion, le script :
+Le script vérifie que :
 
-vérifie que le CSV contient les colonnes obligatoires (ex. patient_id, Age, Gender, etc.),
+toutes les colonnes obligatoires sont présentes (ex. id, Age, Gender), aucune ligne ne viole les contraintes (ID manquant, âge vide, etc.).
 
-et que chaque ligne respecte des règles de base (ID non vide, âge positif, etc.).
+Si une erreur est détectée :
+ValueError: Colonnes manquantes : ['id', 'age', 'gender']
 
-🧭 Test manuel de validation
+🧱 7. Volumes et persistance
+| Volume                           | Rôle                                  |
+| -------------------------------- | ------------------------------------- |
+| **mongo_data**                   | Persiste la base MongoDB              |
+| **migration_data** *(optionnel)* | Copie du CSV utilisée par le migrator |
 
-1. Crée une copie du fichier CSV :
-copy .\data\healthcare_dataset.csv .\data\healthcare_dataset_bad.csv
+Les données persistent après redémarrage de Docker :
+docker volume ls
 
-2. Ouvre healthcare_dataset_bad.csv et supprime une colonne obligatoire (patient_id par ex.).
-
-3. Modifie le docker-compose.yml pour pointer vers ce fichier :
-environment:
-  CSV_SOURCE: /seed/healthcare_dataset_bad.csv
-4. Relance la migration :
-docker compose run --rm migrator
-🔴 Résultat attendu :
-ValueError: Colonnes manquantes : ['patient_id']
-Aucune donnée n’est insérée → la validation fonctionne ✅
-♻️ 6. Repartir à zéro
+♻️ 8. Réinitialiser complètement
 
 Pour tout supprimer (conteneurs + volumes) :
 docker compose down -v
-Puis relancer :
-docker compose up --build
+docker compose up -d --build
+docker compose run --rm migrator
 
-📘 7. Commandes principales (résumé)
-| Étape                 | Commande PowerShell                                                                                               |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Lancer les conteneurs | `docker compose up --build`                                                                                       |
-| Vérifier MongoDB      | `docker compose exec mongo mongosh --eval "db.getSiblingDB('donnees_medicales').patients.countDocuments()"`       |
-| Lancer les tests      | `docker compose run --rm migrator python -m pip install pytest` puis `docker compose run --rm migrator pytest -v` |
-| Nettoyer tout         | `docker compose down -v`                                                                                          |
-💡 8. Conseils pour la soutenance
+🧾 9. Vérifications globales (“tout va bien” ✅)
 
-👉 Montre en direct ces 3 choses :
-
-docker compose up --build → migration OK
-
-pytest -v → tous les tests PASS
-
-ValueError si CSV erroné → validation intégrée
+| Étape                | Commande                                    | Attendu                             |                                      |
+| -------------------- | ------------------------------------------- | ----------------------------------- | ------------------------------------ |
+| Conteneurs OK        | `docker compose ps`                         | mongo Up (healthy), migrator Exit 0 |                                      |
+| Variables présentes  | `docker compose run --rm migrator env       | Select-String "MONGO_"`             | toutes les variables MONGO_ visibles |
+| CSV trouvé           | `docker compose run --rm migrator ls /data` | `healthcare_dataset.csv` présent    |                                      |
+| Données migrées      | `countDocuments()` > 0                      | Données insérées                    |                                      |
+| Tests unitaires      | `pytest -v`                                 | 100 % PASS                          |                                      |
+| Rejouer la migration | `docker compose run --rm migrator`          | même count (idempotence)            |                                      |
