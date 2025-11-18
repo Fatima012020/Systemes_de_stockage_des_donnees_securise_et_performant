@@ -24,7 +24,7 @@ Systemes_de_stockage_des_donnees_securise_et_performant/
 ├── mongo-init/
 │   └── users_and_roles.js                # Script d'initialisation MongoDB (création des utilisateurs)
 │
-├── src/                                   # Code source principal
+├── tests/                                   # Code source principal
 │   ├── app.py                             # Fonctions utilitaires : validation, formatage, batching
 │   ├── script_python_mongo.py             # Script principal de migration CSV → MongoDB
 │   ├── test_app.py                        # Tests unitaires (pytest)
@@ -60,7 +60,7 @@ crée MongoDB avec authentification,
 
 exécute le script d’initialisation des utilisateurs, et prépare le conteneur migrator.
 
-3️⃣ Vérifier l’état des conteneurs docker compose ps
+3️⃣ Vérifier l’état des conteneurs: docker compose ps
 
 Tu devrais voir :
 NAME      STATUS             PORTS

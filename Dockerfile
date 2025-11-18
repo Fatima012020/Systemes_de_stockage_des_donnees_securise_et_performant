@@ -8,7 +8,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copier le code Python dans le conteneur
-COPY src/ .
+COPY tests/ .
 
 # Par défaut : exécuter le script de migration
 CMD ["python", "script_python_mongo.py"]
